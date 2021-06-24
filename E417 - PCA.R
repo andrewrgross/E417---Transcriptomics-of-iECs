@@ -8,84 +8,221 @@
 ### Header
 library(ggplot2)
 library(ggbiplot)
-library(biomaRt)
-ensembl = useMart(host='www.ensembl.org',biomart='ENSEMBL_MART_ENSEMBL',dataset="hsapiens_gene_ensembl")
-filters = listFilters(ensembl)
-attributes = listAttributes(ensembl)
 
 ############################################################################################
 ### Functions
 
-add.description <- function(dataframe, identifier = (c('ensembl_gene_id', 'external_gene_name' ))) {
-  descr <- getBM(attributes=c(identifier,'description'), filters= identifier, values=row.names(dataframe), mart=ensembl)
-  descr <- descr[match(row.names(dataframe),descr[,1]),]
-  descriptions <- c()
-  for (rowNumber in 1:length(descr[,1])) {
-    newDescr <- descr[rowNumber,][,2]
-    newDescr <- strsplit(newDescr, " \\[")[[1]][1]
-    descriptions <- c(descriptions, newDescr)
-  }
-  dataframe[length(dataframe)+1] <- descriptions
-  names(dataframe)[ncol(dataframe)] <- "Description"
-  return(dataframe)
-}
-
-#convert.ids <- function(dataframe) {
-  ### This version is obsolte
-#  ensemblIDs <- c()
- # gene.names <- c()
-#  for (rowName in row.names(dataframe)) {
-#    ensemblID <- strsplit(rowName,"\\.")[[1]][1]
- #   gene.name <- strsplit(rowName,"\\_")[[1]][2]
-  #  ensemblIDs <- c(ensemblIDs, ensemblID)
-   # gene.names <- c(gene.names, gene.name)
-#  }
- # #row.names(dataframe) <- ensemblIDs
-  #row.names(dataframe) <- make.unique(gene.names)
-  #return(dataframe)
-#}
-
-convert.ids <- function(dataframe, add.gene.name.column = TRUE) {
-  ### This function will convert a row name consisting of a contactenated ensembl ID and gene to one or the other,
-  ### based on the users instruction (2018-10-04)
-  ensemblIDs <- c()                                           # Empty lists are initialized to receive IDs as they're created
-  gene.names <- c()
-  for (rowName in row.names(dataframe)) {                     # Loops through all rows in the data frame
-    ensemblID <- strsplit(rowName,"\\.")[[1]][1]                 # Splits the row name and declares the ensembl ID
-    gene.name <- strsplit(rowName,"\\_")[[1]][2]                 # Splits the row name, declares the gene name
-    ensemblIDs <- c(ensemblIDs, ensemblID)                       # Adds ensembl ID and gene name to appropriate lists
-    gene.names <- c(gene.names, gene.name)
-  }
-  row.names(dataframe) <- make.unique(ensemblIDs)                          # assigns the new row names
-  if(add.gene.name.column == TRUE) {
-    dataframe$Gene <- gene.names
-  }
-  return(dataframe)                                           # Returns the data frame with new rows
-}
-
-new.names <- c()
-for (names in test) {
-  new.name <- strsplit(names, '\\_')[[1]][2]
-  new.names <- c(new.names,new.name)
-}
-
-
+############################################################################################
 ### Input
 
 setwd('C:/Users/grossar/Box/Sareen Lab Shared/Data/RNAseq Data/iECs/')
-fpkm.data <- read.csv('RDSS-12511--04--28--2021_FPKM.csv', row.names = 1)
-
-metadata.ang <- read.csv('C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis of iECs/metadata.csv')
-
-
+list.files()
+ang.data <- read.csv('RDSS-12511--04--28--2021_FPKM.csv', row.names = 1, fileEncoding="UTF-8-BOM")
+(ang.metadata <- read.csv('C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis of iECs/metadata.csv', fileEncoding="UTF-8-BOM"))
 
 ############################################################################################
 ### Format
 
 ### Rename columns
-names(fpkm.data) <- metadata.ang$Shortname
+data.frame(names(ang.data),ang.metadata)
+names(ang.data) <- ang.metadata$Shortname
+summary(ang.data)
 
-#fpkm.data <- fpkm.data[c(1,2,9,4,5,6,7,8,3,10,11,12)] # Reordered!
+### Select data to plot
+ang.metadata <- ang.metadata[1:9,]      # Everything but iPSCs
+ang.data.f <- ang.data[ang.metadata$Shortname]
+
+### Replace NAs with 0
+ang.data.f[is.na(ang.data.f)] <- 1
+ang.data.max <- apply(ang.data.f, 1, max)
+(cutoff <- quantile(ang.data.max, 0.5))
+rows.to.keep <- ang.data.max > cutoff
+summary(rows.to.keep)
+### Reorder columns
+results.ang <- ang.data.f[rows.to.keep,]
+
+### Convert to matrix
+results.ang <- as.matrix(results.ang)
+summary(results.ang)
+############################################################################################
+### Calculate Principle Components
+
+### Calculate the actual components
+pca.ang <- prcomp(t(results.ang), scale = TRUE)
+#pca.ang <- prcomp(t(results.ang), scale = FALSE)
+
+### Calculate the percent variation accounted for by each component
+pca.data.var <- pca.ang$sdev^2
+pca.data.var.per <- round(pca.data.var/sum(pca.data.var)*100, 1)
+
+
+
+############################################################################################
+### Plot Data
+title = 'PCA analysis of iECs treated with ANG1'
+
+barplot(pca.data.var.per, main = 'Scree Plot', xlab = 'Principle Component', ylab = 'Percent Variation')
+
+### Define data frame for ggplot
+pca.data.to.plot <- data.frame(Sample = rownames(pca.ang$x), 
+                               PC1 = pca.ang$x[,1],
+                               PC2 = pca.ang$x[,2],
+                               PC3 = pca.ang$x[,3],
+                               PC4 = pca.ang$x[,4],
+                               PC5 = pca.ang$x[,5])
+
+(pca.data.to.plot <- cbind(pca.data.to.plot, ang.metadata[-1]))
+#pca.data.to.plot$Group <- pca.data.to.plot$CellLine
+
+### Basic plot of PC1 v PC2
+(pca.plot <- ggplot(data = pca.data.to.plot, aes(x = PC1, y = PC2, label = Condition, color = Condition)) +
+    geom_point() + 
+    geom_text() + 
+    xlab(paste('PC1 - ', pca.data.var.per[1], '%', sep = '')) +
+    ylab(paste('PC2 - ', pca.data.var.per[2], '%', sep = '')) +
+    #xlim(c(-50,70)) +
+    theme_bw() +
+    ggtitle('PCA of E417'))
+
+############################################################################################
+### Generate formatted pca plots
+### PC1 v PC2
+subtitle = 'PC1 v PC2'
+(pca.1.v.2 <- ggplot(data = pca.data.to.plot, aes(x = PC1, y = PC2, label = Shortname)) +
+    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21) +
+    #geom_text(hjust=-0.2,vjust=0.5) + 
+    xlim(min(pca.data.to.plot$PC1)-5,max(pca.data.to.plot$PC1+20)) +
+    scale_fill_manual(values = c("#fe1c1c", "#fab9b6", "#a6acf7", "#000dc4")) +
+    labs(title = title, 
+         subtitle = subtitle,
+         x = paste('PC1 - ', pca.data.var.per[1], '%', sep = ''), 
+         y = paste('PC2 - ', pca.data.var.per[2], '%', sep = '')) +
+    theme(plot.title = element_text(color="black", face="bold", size=22, margin=margin(10,0,20,0)),
+          axis.title.x = element_text(face="bold", size=14,margin =margin(20,0,10,0)),
+          axis.title.y = element_text(face="bold", size=14,margin =margin(0,20,0,10)),
+          panel.background = element_rect(fill = 'white', color = 'black'),
+          plot.margin = unit(c(1,1,1,1), "cm"), axis.text = element_text(size = 12)) )
+
+
+### PC1 v PC3
+subtitle = 'PC1 v PC3'
+(pca.1.v.3 <- ggplot(data = pca.data.to.plot, aes(x = PC1, y = PC3, label = Shortname)) +
+    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21) +
+    #geom_text(hjust=-0.2,vjust=0.5) + 
+    xlim(min(pca.data.to.plot$PC1)-5,max(pca.data.to.plot$PC1+20)) +
+    scale_fill_manual(values = c("#fe1c1c", "#fab9b6", "#a6acf7", "#000dc4")) +
+    labs(title = title, 
+         subtitle = subtitle,
+         x = paste('PC1 - ', pca.data.var.per[1], '%', sep = ''), 
+         y = paste('PC3 - ', pca.data.var.per[3], '%', sep = '')) +
+    theme(plot.title = element_text(color="black", face="bold", size=22, margin=margin(10,0,20,0)),
+          axis.title.x = element_text(face="bold", size=14,margin =margin(20,0,10,0)),
+          axis.title.y = element_text(face="bold", size=14,margin =margin(0,20,0,10)),
+          panel.background = element_rect(fill = 'white', color = 'black'),
+          plot.margin = unit(c(1,1,1,1), "cm"), axis.text = element_text(size = 12)) )
+
+### PC2 v PC3
+subtitle = 'PC2 v PC3'
+(pca.2.v.3 <- ggplot(data = pca.data.to.plot, aes(x = PC2, y = PC3, label = Shortname)) +
+    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21) +
+    #geom_text(hjust=-0.2,vjust=0.5) + 
+    xlim(min(pca.data.to.plot$PC1)-5,max(pca.data.to.plot$PC1+20)) +
+    scale_fill_manual(values = c("#fe1c1c", "#fab9b6", "#a6acf7", "#000dc4")) +
+    labs(title = title, 
+         subtitle = subtitle,
+         x = paste('PC2 - ', pca.data.var.per[2], '%', sep = ''), 
+         y = paste('PC3 - ', pca.data.var.per[3], '%', sep = '')) +
+    theme(plot.title = element_text(color="black", face="bold", size=22, margin=margin(10,0,20,0)),
+          axis.title.x = element_text(face="bold", size=14,margin =margin(20,0,10,0)),
+          axis.title.y = element_text(face="bold", size=14,margin =margin(0,20,0,10)),
+          panel.background = element_rect(fill = 'white', color = 'black'),
+          plot.margin = unit(c(1,1,1,1), "cm"), axis.text = element_text(size = 12)) )
+
+### PC1 v PC4
+subtitle = 'PC1 v PC4'
+(pca.1.v.4 <- ggplot(data = pca.data.to.plot, aes(x = PC1, y = PC4, label = Shortname)) +
+    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21) +
+    #geom_text(hjust=-0.2,vjust=0.5) + 
+    xlim(min(pca.data.to.plot$PC1)-5,max(pca.data.to.plot$PC1+20)) +
+    scale_fill_manual(values = c("#fe1c1c", "#fab9b6", "#a6acf7", "#000dc4")) +
+    labs(title = title, 
+         subtitle = subtitle,
+         x = paste('PC1 - ', pca.data.var.per[1], '%', sep = ''), 
+         y = paste('PC4 - ', pca.data.var.per[4], '%', sep = '')) +
+    theme(plot.title = element_text(color="black", face="bold", size=22, margin=margin(10,0,20,0)),
+          axis.title.x = element_text(face="bold", size=14,margin =margin(20,0,10,0)),
+          axis.title.y = element_text(face="bold", size=14,margin =margin(0,20,0,10)),
+          panel.background = element_rect(fill = 'white', color = 'black'),
+          plot.margin = unit(c(1,1,1,1), "cm"), axis.text = element_text(size = 12)) )
+
+### PC1 v PC5
+subtitle = 'PC1 v PC5'
+(pca.1.v.5 <- ggplot(data = pca.data.to.plot, aes(x = PC1, y = PC5, label = Shortname)) +
+    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21) +
+    #geom_text(hjust=-0.2,vjust=0.5) + 
+    xlim(min(pca.data.to.plot$PC1)-5,max(pca.data.to.plot$PC1+20)) +
+    scale_fill_manual(values = c("#fe1c1c", "#fab9b6", "#a6acf7", "#000dc4")) +
+    labs(title = title, 
+         subtitle = subtitle,
+         x = paste('PC1 - ', pca.data.var.per[1], '%', sep = ''), 
+         y = paste('PC5 - ', pca.data.var.per[5], '%', sep = '')) +
+    theme(plot.title = element_text(color="black", face="bold", size=22, margin=margin(10,0,20,0)),
+          axis.title.x = element_text(face="bold", size=14,margin =margin(20,0,10,0)),
+          axis.title.y = element_text(face="bold", size=14,margin =margin(0,20,0,10)),
+          panel.background = element_rect(fill = 'white', color = 'black'),
+          plot.margin = unit(c(1,1,1,1), "cm"), axis.text = element_text(size = 12)) )
+
+
+
+############################################################################################
+### Write to folder
+setwd('C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis of iECs/PCA/')
+
+
+### Save plot
+tiff(filename= paste0('PCA 1v2.tiff'), width = 800, height = 800, units = "px", pointsize = 12)
+pca.1.v.2
+dev.off()
+
+tiff(filename= paste0('PCA 1v3.tiff'), width = 800, height = 800, units = "px", pointsize = 12)
+pca.1.v.3
+dev.off()
+
+tiff(filename= paste0('PCA 2v3.tiff'), width = 800, height = 800, units = "px", pointsize = 12)
+pca.2.v.3
+dev.off()
+
+tiff(filename= paste0('PCA 1v4.tiff'), width = 800, height = 800, units = "px", pointsize = 12)
+pca.1.v.4
+dev.off()
+
+tiff(filename= paste0('PCA 1v5.tiff'), width = 800, height = 800, units = "px", pointsize = 12)
+pca.1.v.5
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ############################################################################################
 ### Subset by column then row
