@@ -7,7 +7,7 @@
 ############################################################################################
 ### Header
 library(ggplot2)
-library(ggbiplot)
+#library(ggbiplot)
 
 ############################################################################################
 ### Functions
@@ -89,25 +89,27 @@ pca.data.to.plot <- data.frame(Sample = rownames(pca.ang$x),
 ### PC1 v PC2
 subtitle = 'PC1 v PC2'
 (pca.1.v.2 <- ggplot(data = pca.data.to.plot, aes(x = PC1, y = PC2, label = Shortname)) +
-    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21) +
-    #geom_text(hjust=-0.2,vjust=0.5) + 
-    xlim(min(pca.data.to.plot$PC1)-5,max(pca.data.to.plot$PC1+20)) +
+    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21, stroke = 2) +
+    xlim(min(pca.data.to.plot$PC1)-5,max(pca.data.to.plot$PC1+18)) +
     scale_fill_manual(values = c("#fe1c1c", "#fab9b6", "#a6acf7", "#000dc4")) +
-    labs(title = title, 
-         subtitle = subtitle,
-         x = paste('PC1 - ', pca.data.var.per[1], '%', sep = ''), 
+    labs(x = paste('PC1 - ', pca.data.var.per[1], '%', sep = ''), 
+         # title = title, 
+         # subtitle = subtitle,
          y = paste('PC2 - ', pca.data.var.per[2], '%', sep = '')) +
     theme(plot.title = element_text(color="black", face="bold", size=22, margin=margin(10,0,20,0)),
-          axis.title.x = element_text(face="bold", size=14,margin =margin(20,0,10,0)),
-          axis.title.y = element_text(face="bold", size=14,margin =margin(0,20,0,10)),
+          axis.title.x = element_text(face="bold", size=18,margin =margin(20,0,10,0)),
+          axis.title.y = element_text(face="bold", size=18,margin =margin(0,20,0,10)),
+          axis.text.x = element_text(size = 14),
+          axis.text.y = element_text(size = 14),
+          legend.title = element_text(size=16),
+          legend.text = element_text(size=12),
           panel.background = element_rect(fill = 'white', color = 'black'),
           plot.margin = unit(c(1,1,1,1), "cm"), axis.text = element_text(size = 12)) )
-
 
 ### PC1 v PC3
 subtitle = 'PC1 v PC3'
 (pca.1.v.3 <- ggplot(data = pca.data.to.plot, aes(x = PC1, y = PC3, label = Shortname)) +
-    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21) +
+    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21, stroke = 2) +
     #geom_text(hjust=-0.2,vjust=0.5) + 
     xlim(min(pca.data.to.plot$PC1)-5,max(pca.data.to.plot$PC1+20)) +
     scale_fill_manual(values = c("#fe1c1c", "#fab9b6", "#a6acf7", "#000dc4")) +
@@ -124,7 +126,7 @@ subtitle = 'PC1 v PC3'
 ### PC2 v PC3
 subtitle = 'PC2 v PC3'
 (pca.2.v.3 <- ggplot(data = pca.data.to.plot, aes(x = PC2, y = PC3, label = Shortname)) +
-    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21) +
+    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21, stroke = 2) +
     #geom_text(hjust=-0.2,vjust=0.5) + 
     xlim(min(pca.data.to.plot$PC1)-5,max(pca.data.to.plot$PC1+20)) +
     scale_fill_manual(values = c("#fe1c1c", "#fab9b6", "#a6acf7", "#000dc4")) +
@@ -138,10 +140,12 @@ subtitle = 'PC2 v PC3'
           panel.background = element_rect(fill = 'white', color = 'black'),
           plot.margin = unit(c(1,1,1,1), "cm"), axis.text = element_text(size = 12)) )
 
+
+
 ### PC1 v PC4
 subtitle = 'PC1 v PC4'
 (pca.1.v.4 <- ggplot(data = pca.data.to.plot, aes(x = PC1, y = PC4, label = Shortname)) +
-    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21) +
+    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21, stroke = 2) +
     #geom_text(hjust=-0.2,vjust=0.5) + 
     xlim(min(pca.data.to.plot$PC1)-5,max(pca.data.to.plot$PC1+20)) +
     scale_fill_manual(values = c("#fe1c1c", "#fab9b6", "#a6acf7", "#000dc4")) +
@@ -158,7 +162,7 @@ subtitle = 'PC1 v PC4'
 ### PC1 v PC5
 subtitle = 'PC1 v PC5'
 (pca.1.v.5 <- ggplot(data = pca.data.to.plot, aes(x = PC1, y = PC5, label = Shortname)) +
-    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21) +
+    geom_point(size = 5, aes(fill = Condition), color = 'black', pch = 21, stroke = 2) +
     #geom_text(hjust=-0.2,vjust=0.5) + 
     xlim(min(pca.data.to.plot$PC1)-5,max(pca.data.to.plot$PC1+20)) +
     scale_fill_manual(values = c("#fe1c1c", "#fab9b6", "#a6acf7", "#000dc4")) +

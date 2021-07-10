@@ -8,6 +8,7 @@
 library("pasilla")
 library("DESeq2")
 library("biomaRt")
+library("heatmap2")
 #library("VennDiagram")
 
 ensembl = useMart(host='www.ensembl.org',biomart='ENSEMBL_MART_ENSEMBL',dataset="hsapiens_gene_ensembl")
@@ -150,12 +151,6 @@ counts.data2 <- convert.ids(counts.data, add.gene.name.column = TRUE)
 (columnData.150.ctrl <- data.frame(row.names = metadata.data$Shortname, condition = metadata.data$Condition)[c(1,2,3,7,8,9), , drop = FALSE])
 (columnData.50.150   <- data.frame(row.names = metadata.data$Shortname, condition = metadata.data$Condition)[1:6, , drop = FALSE])
 
-
-# Convert counts into a matrix
-counts.v.ipsc.m <- round(as.matrix(counts.data3), 0)
-counts.v.ctrl.m <- round(as.matrix(counts.data3[row.names(columnData.v.ctrl)]), 0)
-
-
 ####################################################################################################################################################
 ### Differential Expression
 ### Make our DESeq data sets
@@ -252,6 +247,8 @@ up.in.iec.w.high.exp <- up.in.iec.w.high.exp[order(up.in.iec.w.high.exp$baseMean
 ### Separate out genes with no expression in iEC
 # Later
 
+
+##########################################################################
 ### Output the data
 
 getwd()
@@ -297,6 +294,21 @@ setwd("C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis
 
 write.csv(med.across.conditions, 'Genes that increased with ANG1.csv')
 
+####################################################################################################################################################
+### Reimport the data
+##########################################################################
+
+setwd("C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis of iECs/DE")
+
+up.in.iec.no.exp.in.ipSC <- read.csv('DEGs - iEC genes activated from zero.csv', row.names = 1)
+up.in.iec.w.high.exp <- read.csv('DEGs - iEC genes activated to high expr.csv', row.names = 1)
+med.across.conditions <- read.csv('Genes that increased with ANG1.csv', row.names = 1)
+results.all <- read.csv('DEGs - iECs v. iPSCs.csv', row.names = 1)
+results.50 <-  read.csv('DEGs - ANG1-50 v. Ctrl.csv', row.names = 1)
+results.150 <-read.csv('DEGs - ANG1-150 v. Ctrl.csv', row.names = 1)
+results.ang <- read.csv('DEGs - ANG1-50 v. ANG1-150.csv', row.names = 1)
+
+
 ##########################################################################
 ### Plot bar graphs
 
@@ -315,6 +327,25 @@ current.plot <- ggplot(data = dataframe, aes_string(x = 'Type', y = names(datafr
       scale_fill_brewer(palette = 'Set1')
 
 
+##########################################################################
+### Heatmaps
+pal <- colorRampPalette(c('yellow','black','blue'))(100)
+
+expression.df <- results.all
+expression.df <- results.ang
+
+
+
+#expression.df <- expression.df[which(expression.df$padj <0.00000000001),]
+
+expression.df <- expression.df[which(expression.df$padj <0.00001),]
+expression.df <- expression.df[order(expression.df$log2FoldChange),]
+expression.m <- as.matrix(expression.df[7:18])
+heatmap(expression.m, col = pal, Rowv = NA, Colv = NA, scale = "row", margins = c(8,6))
+
+heatmap.2(expression.m, scale = 'row', col = pal, trace = 'none', dendrogram="none", 
+          Rowv=FALSE, symm=TRUE, density.info='none', labRow=NA,
+          lmat=rbind(c(4, 2), c(1, 3)), lhei=c(2, 8), lwid=c(4, 1), margins = c(9,0))
 
 
 
@@ -538,6 +569,86 @@ for(col.numb in 1:(ncol(plot.df)-2)){
 ### Export
 ########################################################################
 
+
+
+
+
+####################################################################################################################################################
+### Format Results
+
+
+##########################################################################
+### Heatmaps
+pal <- colorRampPalette(c('yellow','black','blue'))(100)
+
+heatmap.2(expression.m, scale = 'row', col = pal, trace = 'none', dendrogram="none", 
+          Rowv=FALSE, symm=TRUE, density.info='none', labRow=NA,
+          lmat=rbind(c(4, 2), c(1, 3)), lhei=c(2, 8), lwid=c(4, 1), margins = c(9,0))
+
+heatmap(expression.m, col = pal, Rowv = NA, Colv = NA, scale = "row", margins = c(8,6))
+
+##########################################################################
+### Volcano Plots
+volcano.data.cov <- iec.de
+p.less.than = volcano.data.cov$padj <0.5
+p.less.than[is.na(p.less.than)] = FALSE
+volcano.data.cov <- volcano.data.cov[p.less.than,]
+volcano.data.cov$Gene = volcano.data.cov[,1]
+volcano.data.cov$Gene = rownames(volcano.data.cov)
+subtitle = 'iEC vs HUVECs'
+genes.ds <- volcano.data.cov$Gene[1:20]    # Genes of interest
+
+### Converting FC from log2 to log10
+volcano.data.cov$log10FC <- log10(2^volcano.data.cov$log2FoldChange)
+
+volcano.data.cov.sig <- volcano.data.cov[volcano.data.cov$padj<0.005,]
+volcano.data.cov.sig.up <- volcano.data.cov.sig[volcano.data.cov.sig$log2FoldChange>0.5,]
+volcano.data.cov.sig.down <- volcano.data.cov.sig[-volcano.data.cov.sig$log2FoldChange>0.5,]
+volcano.data.cov.sig <- volcano.data.cov.sig[order(volcano.data.cov.sig$baseMean),]
+
+### Selecting genes to list
+volcano.data.cov.sig$Edge.up <- -log(volcano.data.cov.sig$padj) * volcano.data.cov.sig$log2FoldChange
+volcano.data.cov.sig$Edge.down <- -log(volcano.data.cov.sig$padj) * -volcano.data.cov.sig$log2FoldChange
+
+volcano.text.up <- volcano.data.cov.sig[volcano.data.cov.sig$Edge.up > 9,]; nrow(volcano.text.up)
+volcano.text.down <- volcano.data.cov.sig[volcano.data.cov.sig$Edge.down > 9,]; nrow(volcano.text.down)
+
+### Genes of interest
+volcano.genes.of.interest <- volcano.data.cov.sig[volcano.data.cov.sig$Gene %in% genes.ds,]
+volcano.genes.of.interest.null <- volcano.data.cov[volcano.data.cov$Gene %in% genes.ds,]
+
+### Manually filtering
+text.size = 2
+
+
+ggplot( ) +
+  geom_point(data = volcano.data.cov, aes(x=log2FoldChange, y = log10(padj) ),color = 'grey', size = 0.9) +
+  geom_point(data = volcano.data.cov.sig.up, aes(x=log2FoldChange, y = log10(padj), size = log10(baseMean)), color = 'red') +
+  geom_point(data = volcano.data.cov.sig.down, aes(x=log2FoldChange, y = log10(padj), size = log10(baseMean)), color = 'blue') +
+  #  geom_text(data = volcano.text.up, aes(x=log2FoldChange + 0.2, y = log10(padj) - 0, label = Gene), 
+  #            hjust = 0, vjust = 0.1, size = 3, check_overlap = TRUE) +
+  #  geom_text(data = volcano.text.down, aes(x=log2FoldChange - 0.2, y = log10(padj) - 0, label = Gene), 
+  #            hjust = 1, vjust = 0.1, size = 3, check_overlap = TRUE) +
+  geom_point(data = volcano.genes.of.interest, aes(x=log2FoldChange, y = log10(padj), size = log10(baseMean)), color = 'yellow') +
+  geom_text(data = volcano.genes.of.interest, aes(x=log2FoldChange + 0.2, y = log10(padj) - 0, label = Gene), hjust = 0, vjust = 0.1, size = 3, check_overlap = TRUE) +  
+  scale_color_gradient(low="pink", high="red") +
+  scale_size('Log10 Expression', range = c(0.5,4)) +
+  ylim(c(0, min(log10(volcano.data.cov$padj)))) +
+  xlim(c(min(volcano.data.cov$log2FoldChange-0.5), max(volcano.data.cov$log2FoldChange)+3)) +
+  labs(title="P-Value vs. Log Fold Change Volcano Plot",
+       subtitle = subtitle,
+       x = 'Log2 Fold Change', 
+       y = 'Log10 P-value (Adjusted)') +
+  theme(plot.title = element_text(hjust = 0.5, color="black", face="bold", size=18, margin=margin(0,0,5,0)),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.title.x = element_text(face="bold", size=13,margin =margin(5,0,5,0)),
+        axis.title.y = element_text(face="bold", size=13,margin =margin(0,5,0,5)),
+        panel.background = element_rect(fill = 'white', color = 'black'),
+        plot.margin = unit(c(1,1,1,1), "cm"), axis.text = element_text(size = 12),
+        legend.position = 'none') 
+
+volcano.text.down 
+volcano.text.up
 
 
 
