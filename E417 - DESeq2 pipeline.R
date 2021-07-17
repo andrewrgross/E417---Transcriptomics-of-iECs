@@ -4,11 +4,12 @@
 ### OUTPUT: This script generates a table normalized expression with fold change and p-values between sample groups.
 
 ####################################################################################################################################################
-### Header
+### 1- Header
+####################################################################################################################################################
 library("pasilla")
 library("DESeq2")
 library("biomaRt")
-library("heatmap2")
+library(gplots)
 #library("VennDiagram")
 
 ensembl = useMart(host='www.ensembl.org',biomart='ENSEMBL_MART_ENSEMBL',dataset="hsapiens_gene_ensembl")
@@ -67,15 +68,16 @@ add.description <- function(dataframe) {
   names(dataframe)[ncol(dataframe)] <- "Description"
   return(dataframe)
 }
-filter.low.rows <- function(dataframe) {
+filter.low.rows <- function(dataframe, rm.rows.w.max.below.quant = 0.25) {
+  rm.rows.w.max.below.quant <- as.numeric(rm.rows.w.max.below.quant)
   print(paste('Initial number of genes:', nrow(dataframe)))
   row.max <- apply(dataframe,1, max)
   empty.rows <- which(row.max == 0)
   print(paste('Genes with 0 expression:', length(empty.rows)))
   dataframe <- dataframe[-empty.rows,]
   row.max <- apply(dataframe,1, max)
-  quantile.25 = quantile(row.max, 0.25)[[1]]
-  print(paste('25th percentile:', quantile.25))
+  quantile.25 = quantile(row.max, rm.rows.w.max.below.quant)[[1]]
+  print(paste(rm.rows.w.max.below.quant * 100, 'th percentile:', quantile.25))
   below.quant <- which(row.max <= quantile.25 )
   print(paste('Genes below the 25th percentile:', length(below.quant)))
   dataframe <- dataframe[-below.quant]
@@ -113,25 +115,27 @@ remove.na.and.filter.adj.pval <- function(results.df, adj.pval.cutoff = 0.005) {
   return(results.df)
 }
 ####################################################################################################################################################
-### Input
-
+### 2- Input
+############################################################################################
 setwd('C:/Users/grossar/Box/Sareen Lab Shared/Data/RNAseq Data/iECs/')
 counts.data <- read.csv('RDSS-12511--04--28--2021_COUNTS.csv', row.names = 1)
 tpm.data <- read.csv('RDSS-12511--04--28--2021_TPM.csv', row.names = 1 )
 metadata.data <- read.csv('metadata.csv', fileEncoding="UTF-8-BOM")
 
 ####################################################################################################################################################
-### Format
+### 3 - Format
 ##########################################################################
 ### Reassign sample names (columns)
 names(counts.data) <- metadata.data$Shortname
 names(tpm.data)    <- metadata.data$Shortname
 
 ### Filter out the lowest 25th percentile after removing empty rows
-counts.data <- filter.low.rows(counts.data)
+counts.data <- filter.low.rows(counts.data, rm.rows.w.max.below.quant = 0.25)
 ### Convert transcript names(rows)
-counts.data2 <- convert.ids(counts.data, add.gene.name.column = TRUE)
+counts.data <- convert.ids(counts.data, add.gene.name.column = FALSE)
 
+### Convert TPM ID labels
+tpm.data <- convert.ids(tpm.data, add.gene.name.column = FALSE)
 ### Review the levels of non-unique genes:
 #gene.uniqueness <- isUnique(counts.data2$Gene)
 #summary(gene.uniqueness)
@@ -143,52 +147,59 @@ counts.data2 <- convert.ids(counts.data, add.gene.name.column = TRUE)
 #write.csv(counts.data3, 'RDSS-12511--04--28--2021_COUNTS-gene-names.csv')
 
 ##########################################################################
-### Format for DESeq
+### 3.1 - Format for DESeq
 
 ### Make a column data data frame
 (columnData.v.ipsc   <- data.frame(row.names = metadata.data$Shortname, condition = metadata.data$Celltype))
 (columnData.50.ctrl  <- data.frame(row.names = metadata.data$Shortname, condition = metadata.data$Condition)[4:9, , drop = FALSE])
 (columnData.150.ctrl <- data.frame(row.names = metadata.data$Shortname, condition = metadata.data$Condition)[c(1,2,3,7,8,9), , drop = FALSE])
 (columnData.50.150   <- data.frame(row.names = metadata.data$Shortname, condition = metadata.data$Condition)[1:6, , drop = FALSE])
+(columnData.ang.ctrl <- data.frame(row.names = metadata.data$Shortname, condition = c(rep('Ang',6), rep('Ctrl',6)))[1:9, , drop = FALSE])
 
 ####################################################################################################################################################
-### Differential Expression
+### 4 - Differential Expression
+############################################################################################
 ### Make our DESeq data sets
 
 dds.iec.v.ipsc <- DESeqDataSetFromMatrix(countData = as.matrix(counts.data), colData = columnData.v.ipsc, design = ~ condition) ; title = 'iECs vs iPSCs'
 dds.50.v.ctrl <- DESeqDataSetFromMatrix(countData = as.matrix(counts.data[row.names(columnData.50.ctrl)]), colData = columnData.50.ctrl, design = ~ condition) ; title = 'ANG1-50 vs Ctrl'
 dds.150.v.ctrl <- DESeqDataSetFromMatrix(countData = as.matrix(counts.data[row.names(columnData.150.ctrl)]), colData = columnData.150.ctrl, design = ~ condition) ; title = 'ANG1-150 vs Ctrl'
 dds.50.v.150 <- DESeqDataSetFromMatrix(countData = as.matrix(counts.data[row.names(columnData.50.150)]), colData = columnData.50.150, design = ~ condition) ; 
+dds.ang.v.ctrl<-DESeqDataSetFromMatrix(countData = as.matrix(counts.data[row.names(columnData.ang.ctrl)]), colData = columnData.ang.ctrl, design = ~ condition) ; 
+
 
 ### Run DESeq
 dds.iec.v.ipsc <- DESeq(dds.iec.v.ipsc)
 dds.50.v.ctrl <- DESeq(dds.50.v.ctrl)
 dds.150.v.ctrl <- DESeq(dds.150.v.ctrl)
 dds.50.v.150 <- DESeq(dds.50.v.150)
+dds.ang.v.ctrl <- DESeq(dds.ang.v.ctrl)
 
 ### Define results table
 results.iec.v.ipsc <- as.data.frame(results(dds.iec.v.ipsc))
 results.50.v.ctrl  <- as.data.frame(results(dds.50.v.ctrl))
 results.150.v.ctrl <- as.data.frame(results(dds.150.v.ctrl))
 results.50.v.150   <- as.data.frame(results(dds.50.v.150))
+results.ang.v.ctrl <- as.data.frame(results(dds.ang.v.ctrl))
+
 
 ####################################################################################################################################################
-### Format Results
+### 4.1 - Format Results
 
 ### Remove NAs, filter by adj. pval., and sort by adj. pval
 results.iec.v.ipsc <- remove.na.and.filter.adj.pval(results.iec.v.ipsc, adj.pval.cutoff = 0.005)
 results.50.v.ctrl  <- remove.na.and.filter.adj.pval(results.50.v.ctrl, adj.pval.cutoff = 0.005)
 results.150.v.ctrl <- remove.na.and.filter.adj.pval(results.150.v.ctrl, adj.pval.cutoff = 0.005)
 results.50.v.150   <- remove.na.and.filter.adj.pval(results.50.v.150, adj.pval.cutoff = 0.005)
+results.ang.v.ctrl <- remove.na.and.filter.adj.pval(results.ang.v.ctrl, adj.pval.cutoff = 0.005)
+
 
 ### Add back in the expression counts
 results.iec.v.ipsc <- cbind(results.iec.v.ipsc, round(tpm.data[row.names(results.iec.v.ipsc),],0))
-
 results.50.v.ctrl  <- cbind(results.50.v.ctrl,  round(tpm.data[row.names(results.50.v.ctrl),],0))
-
 results.150.v.ctrl <- cbind(results.150.v.ctrl, round(tpm.data[row.names(results.150.v.ctrl),],0))
-
 results.50.v.150   <- cbind(results.50.v.150,   round(tpm.data[row.names(results.50.v.150),],0))
+results.ang.v.ctrl <- cbind(results.ang.v.ctrl, round(tpm.data[row.names(results.ang.v.ctrl),],0))
 
 ### Annotate genes
 results.all  <- convert.ids(results.iec.v.ipsc)
@@ -200,28 +211,32 @@ results.50   <- add.description(results.50)
 results.150  <- convert.ids(results.150.v.ctrl)
 results.150  <- add.description(results.150)
 
-results.ang  <- convert.ids(results.50.v.150)
-results.ang  <- add.description(results.ang)
-##########################################################################
-### Output the data
+results.ava  <- convert.ids(results.50.v.150)
+results.ava  <- add.description(results.ava)
 
+results.ang  <- convert.ids(results.ang.v.ctrl)
+results.ang  <- add.description(results.ang)
+############################################################################################
+### 5 - Output the data
+############################################################################################
 getwd()
 setwd("C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis of iECs/DE")
 
 write.csv(results.all, 'DEGs - iECs v. iPSCs.csv')
 write.csv(results.50 , 'DEGs - ANG1-50 v. Ctrl.csv')
 write.csv(results.150, 'DEGs - ANG1-150 v. Ctrl.csv')
-write.csv(results.ang, 'DEGs - ANG1-50 v. ANG1-150.csv')
+write.csv(results.ava, 'DEGs - ANG1-50 v. ANG1-150.csv')
+write.csv(results.ang, 'DEGs - ANG1-50&150 v. Ctrl.csv')
 
 
-##########################################################################
-##########################################################################
-### Identify all the genes which went up relative to iPSCs
-
+############################################################################################
+### 6 - Identify all the genes which went up relative to iPSCs
+############################################################################################
 setwd("C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis of iECs/DE")
 results.all  <- read.csv('DEGs - iECs v. iPSCs.csv')
 results.50   <- read.csv('DEGs - ANG1-50 v. Ctrl.csv')
 results.150  <- read.csv('DEGs - ANG1-150 v. Ctrl.csv')
+results.ang  <- read.csv()
 
 up.in.iec   <- results.all[which(results.all$log2FoldChange <0),]
 down.in.iec <- results.all[which(results.all$log2FoldChange >0),]
@@ -248,9 +263,9 @@ up.in.iec.w.high.exp <- up.in.iec.w.high.exp[order(up.in.iec.w.high.exp$baseMean
 # Later
 
 
-##########################################################################
-### Output the data
-
+############################################################################################
+### 7 - Output the data
+############################################################################################
 getwd()
 setwd("C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis of iECs/DE")
 
@@ -258,9 +273,9 @@ write.csv(up.in.iec.no.exp.in.ipsc, 'DEGs - iEC genes activated from zero.csv')
 write.csv(up.in.iec.w.high.exp , 'DEGs - iEC genes activated to high expr.csv')
 
 
-##########################################################################
-### Identify all the genes went up with expression of ANG1
-
+############################################################################################
+###  8 - Identify all the genes went up with expression of ANG1
+############################################################################################
 med.in.ctrl      <- apply(up.in.iec[13:15], 1, median)
 med.in.ang.50    <- apply(up.in.iec[10:12], 1, median)
 med.in.ang.150   <- apply(up.in.iec[7:9], 1, median)
@@ -273,12 +288,12 @@ med.across.conditions <- med.across.conditions[med.across.conditions$del.1 >0,]
 med.across.conditions <- med.across.conditions[med.across.conditions$del.2 >0,]
 
 med.across.conditions$del.mult <- med.across.conditions$del.1 * med.across.conditions$del.2
-med.across.conditions <- med.across.conditions[c(6,7,8,9,10,11,12,13,14,15,21,22,23,24,25,26,19,20)]
+med.across.conditions <- med.across.conditions[c(6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,19,20)]
 med.across.conditions <- med.across.conditions[order(med.across.conditions$del.mult, decreasing = TRUE),]
 
 
-##########################################################################
-### Add in the pvalue for the t-test between treatments
+############################################################################################
+### 8.1 - Add in the pvalue for the t-test between treatments
 
 results.50.reordered <- results.50[row.names(med.across.conditions),]
 results.150.reordered <- results.150[row.names(med.across.conditions),]
@@ -295,8 +310,8 @@ setwd("C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis
 write.csv(med.across.conditions, 'Genes that increased with ANG1.csv')
 
 ####################################################################################################################################################
-### Reimport the data
-##########################################################################
+### 9 - Reimport the data
+############################################################################################
 
 setwd("C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis of iECs/DE")
 
@@ -306,49 +321,74 @@ med.across.conditions <- read.csv('Genes that increased with ANG1.csv', row.name
 results.all <- read.csv('DEGs - iECs v. iPSCs.csv', row.names = 1)
 results.50 <-  read.csv('DEGs - ANG1-50 v. Ctrl.csv', row.names = 1)
 results.150 <-read.csv('DEGs - ANG1-150 v. Ctrl.csv', row.names = 1)
-results.ang <- read.csv('DEGs - ANG1-50 v. ANG1-150.csv', row.names = 1)
+results.ava <- read.csv('DEGs - ANG1-50 v. ANG1-150.csv', row.names = 1)
+results.ang <- read.csv('DEGs - ANG1-50&150 v. Ctrl.csv', row.names = 1)
 
+genes.that.went.up <- read.csv('Diff Exp - Genes that went up with ANG1.csv', row.names = 1)
+
+############################################################################################
+### Select the genes to plot
+
+genes.to.plot <- genes.that.went.up[1:10,]
+expr.to.plot <- tpm.data[row.names(genes.to.plot),]
+
+
+geneNumber = 10
+(df.to.plot <- data.frame(Condition = factor(ang.metadata$Condition, levels = c('iPSC', 'Ctrl', 'Ang1_50', 'Ang1_150')), Expression = unlist(expr.to.plot[geneNumber,])))
+(currentGene = genes.to.plot$Description[geneNumber])
 
 ##########################################################################
 ### Plot bar graphs
 
-df.to.plot <- med.across.conditions[1:20,]
-df.to.plot <- df.to.plot
+currentPlot <- ggplot(data = df.to.plot, aes(x = Condition, y = Expression, fill = Condition)) +
+  geom_boxplot(varwidth = FALSE, size = 0.5) +
+  scale_y_continuous(limits = c(0,NA), breaks = seq(0,10000,1000)) +
+  scale_x_discrete(labels = c('iPSC', 'Control iECs', '+50 ng/mL ANG1', '+150 ng/mL ANG1')) +
+  labs(title = currentGene, 
+       x = 'Condition', 
+       y = 'Expression [TPM]') +
+  theme(plot.title = element_text(color="black", face="bold", size=18, hjust = 0.5),
+        axis.text = element_text(size = 14),
+        axis.title.x = element_text(face="bold", size=12,margin =margin(20,0,10,0)),
+        axis.title.y = element_text(face="bold", size=14,margin =margin(0,20,0,10)),
+        legend.position = 'none',
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        panel.border = element_rect(color = "black", fill = NA)) +
+  scale_fill_brewer(palette = 'BuGn') 
+currentPlot
+setwd('C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis of iECs/Boxplots/')
+png(filename=paste0(currentGene,'-',strftime(Sys.time(),"%a%b%d%H%M"),".png"), 
+    type="cairo",
+    units="in", 
+    width=14, 
+    height=14, 
+    pointsize=12, 
+    res=300)
+currentPlot
 
-current.plot <- ggplot(data = dataframe, aes_string(x = 'Type', y = names(dataframe)[gene.column], fill = "Type")) +
-      geom_boxplot(varwidth = FALSE) +
-      scale_y_continuous(limits = c(0,NA)) + geom_jitter(width = 0, size = 2) +
-      labs(title = names(dataframe[gene.column])) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x = element_blank(),
-            axis.title.y = element_blank(), legend.position = 'none',
-            panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-            panel.background = element_blank(), axis.line = element_line(colour = "black"),
-            panel.border = element_rect(color = "black", fill = NA)) +
-      scale_fill_brewer(palette = 'Set1')
-
+dev.off()
 
 ##########################################################################
 ### Heatmaps
 pal <- colorRampPalette(c('yellow','black','blue'))(100)
-
-expression.df <- results.all
 expression.df <- results.ang
-
-
-
-#expression.df <- expression.df[which(expression.df$padj <0.00000000001),]
-
-expression.df <- expression.df[which(expression.df$padj <0.00001),]
+expression.df <- expression.df[expression.df$padj < 0.0001,]; (nrow(expression.df))
 expression.df <- expression.df[order(expression.df$log2FoldChange),]
 expression.m <- as.matrix(expression.df[7:18])
+expression.m <- as.matrix(expression.df[7:15])
+
 heatmap(expression.m, col = pal, Rowv = NA, Colv = NA, scale = "row", margins = c(8,6))
 
 heatmap.2(expression.m, scale = 'row', col = pal, trace = 'none', dendrogram="none", 
+          Rowv=FALSE, symm=TRUE, density.info='none', labRow=NA)
+
+
+heatmap.2(expression.m, scale = 'row', col = pal, trace = 'none', dendrogram="none", 
           Rowv=FALSE, symm=TRUE, density.info='none', labRow=NA,
-          lmat=rbind(c(4, 2), c(1, 3)), lhei=c(2, 8), lwid=c(4, 1), margins = c(9,0))
-
-
-
+          lmat=rbind(c(4, 2), c(1, 3)), lhei=c(2, 8), lwid=c(4, 1), margins = c(4,0))
 
 
 
