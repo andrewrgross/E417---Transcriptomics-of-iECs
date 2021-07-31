@@ -74,13 +74,14 @@ filter.low.rows <- function(dataframe, rm.rows.w.max.below.quant = 0.25) {
   row.max <- apply(dataframe,1, max)
   empty.rows <- which(row.max == 0)
   print(paste('Genes with 0 expression:', length(empty.rows)))
+  ### Now filter out based on quantile:
   dataframe <- dataframe[-empty.rows,]
   row.max <- apply(dataframe,1, max)
   quantile.25 = quantile(row.max, rm.rows.w.max.below.quant)[[1]]
   print(paste(rm.rows.w.max.below.quant * 100, 'th percentile:', quantile.25))
   below.quant <- which(row.max <= quantile.25 )
-  print(paste('Genes below the 25th percentile:', length(below.quant)))
-  dataframe <- dataframe[-below.quant]
+  print(paste('Genes below the', rm.rows.w.max.below.quant*100, 'th percentile:', length(below.quant)))
+  dataframe <- dataframe[-below.quant,]
   print(paste('Final number of genes:', nrow(dataframe)))
   return(dataframe)
 }
@@ -130,12 +131,13 @@ names(counts.data) <- metadata.data$Shortname
 names(tpm.data)    <- metadata.data$Shortname
 
 ### Filter out the lowest 25th percentile after removing empty rows
-counts.data <- filter.low.rows(counts.data, rm.rows.w.max.below.quant = 0.25)
+counts.data <- filter.low.rows(counts.data, rm.rows.w.max.below.quant = 0.5)
 ### Convert transcript names(rows)
 counts.data <- convert.ids(counts.data, add.gene.name.column = FALSE)
 
 ### Convert TPM ID labels
-tpm.data <- convert.ids(tpm.data, add.gene.name.column = FALSE)
+tpm.data <- convert.ids(tpm.data, add.gene.name.column = TRUE)
+
 ### Review the levels of non-unique genes:
 #gene.uniqueness <- isUnique(counts.data2$Gene)
 #summary(gene.uniqueness)
@@ -155,7 +157,7 @@ tpm.data <- convert.ids(tpm.data, add.gene.name.column = FALSE)
 (columnData.150.ctrl <- data.frame(row.names = metadata.data$Shortname, condition = metadata.data$Condition)[c(1,2,3,7,8,9), , drop = FALSE])
 (columnData.50.150   <- data.frame(row.names = metadata.data$Shortname, condition = metadata.data$Condition)[1:6, , drop = FALSE])
 (columnData.ang.ctrl <- data.frame(row.names = metadata.data$Shortname, condition = c(rep('Ang',6), rep('Ctrl',6)))[1:9, , drop = FALSE])
-
+(columnData.test     <- data.frame(row.names = metadata.data$Shortname, condition = c('rand0', 'rand1', 'rand0', 'rand1', 'rand1', 'rand0', 'rand1', 'rand0', 'rand1', 'rand1', 'rand0', 'rand1'))[1:6, , drop = FALSE])
 ####################################################################################################################################################
 ### 4 - Differential Expression
 ############################################################################################
@@ -166,7 +168,7 @@ dds.50.v.ctrl <- DESeqDataSetFromMatrix(countData = as.matrix(counts.data[row.na
 dds.150.v.ctrl <- DESeqDataSetFromMatrix(countData = as.matrix(counts.data[row.names(columnData.150.ctrl)]), colData = columnData.150.ctrl, design = ~ condition) ; title = 'ANG1-150 vs Ctrl'
 dds.50.v.150 <- DESeqDataSetFromMatrix(countData = as.matrix(counts.data[row.names(columnData.50.150)]), colData = columnData.50.150, design = ~ condition) ; 
 dds.ang.v.ctrl<-DESeqDataSetFromMatrix(countData = as.matrix(counts.data[row.names(columnData.ang.ctrl)]), colData = columnData.ang.ctrl, design = ~ condition) ; 
-
+dds.test <- DESeqDataSetFromMatrix(countData = as.matrix(counts.data[row.names(columnData.test)]), colData = columnData.test, design = ~condition)
 
 ### Run DESeq
 dds.iec.v.ipsc <- DESeq(dds.iec.v.ipsc)
@@ -174,6 +176,12 @@ dds.50.v.ctrl <- DESeq(dds.50.v.ctrl)
 dds.150.v.ctrl <- DESeq(dds.150.v.ctrl)
 dds.50.v.150 <- DESeq(dds.50.v.150)
 dds.ang.v.ctrl <- DESeq(dds.ang.v.ctrl)
+dds.test <- DESeq(dds.test)
+
+### Try with a different test?
+dds.50.test <- DESeq(dds.50.v.ctrl, test = 'Wald')
+results.test <- as.data.frame(results(dds.test))
+results.test <- remove.na.and.filter.adj.pval(results.test, adj.pval.cutoff = 0.9)
 
 ### Define results table
 results.iec.v.ipsc <- as.data.frame(results(dds.iec.v.ipsc))
@@ -187,12 +195,11 @@ results.ang.v.ctrl <- as.data.frame(results(dds.ang.v.ctrl))
 ### 4.1 - Format Results
 
 ### Remove NAs, filter by adj. pval., and sort by adj. pval
-results.iec.v.ipsc <- remove.na.and.filter.adj.pval(results.iec.v.ipsc, adj.pval.cutoff = 0.005)
-results.50.v.ctrl  <- remove.na.and.filter.adj.pval(results.50.v.ctrl, adj.pval.cutoff = 0.005)
-results.150.v.ctrl <- remove.na.and.filter.adj.pval(results.150.v.ctrl, adj.pval.cutoff = 0.005)
-results.50.v.150   <- remove.na.and.filter.adj.pval(results.50.v.150, adj.pval.cutoff = 0.005)
-results.ang.v.ctrl <- remove.na.and.filter.adj.pval(results.ang.v.ctrl, adj.pval.cutoff = 0.005)
-
+results.iec.v.ipsc <- remove.na.and.filter.adj.pval(results.iec.v.ipsc, adj.pval.cutoff = 0.5)
+results.50.v.ctrl  <- remove.na.and.filter.adj.pval(results.50.v.ctrl, adj.pval.cutoff = 0.9)
+results.150.v.ctrl <- remove.na.and.filter.adj.pval(results.150.v.ctrl, adj.pval.cutoff = 0.9)
+results.50.v.150   <- remove.na.and.filter.adj.pval(results.50.v.150, adj.pval.cutoff = 0.9)
+results.ang.v.ctrl <- remove.na.and.filter.adj.pval(results.ang.v.ctrl, adj.pval.cutoff = 0.5)
 
 ### Add back in the expression counts
 results.iec.v.ipsc <- cbind(results.iec.v.ipsc, round(tpm.data[row.names(results.iec.v.ipsc),],0))
@@ -236,7 +243,8 @@ setwd("C:/Users/grossar/Box/Sareen Lab Shared/Data/Andrew/E417 - RNAseq analysis
 results.all  <- read.csv('DEGs - iECs v. iPSCs.csv')
 results.50   <- read.csv('DEGs - ANG1-50 v. Ctrl.csv')
 results.150  <- read.csv('DEGs - ANG1-150 v. Ctrl.csv')
-results.ang  <- read.csv()
+results.ava  <- read.csv('DEGs - ANG1-50 v. ANG1-150.csv')
+results.ang  <- read.csv('DEGs - ANG1-50&150 v. Ctrl.csv')
 
 up.in.iec   <- results.all[which(results.all$log2FoldChange <0),]
 down.in.iec <- results.all[which(results.all$log2FoldChange >0),]
@@ -338,7 +346,7 @@ geneNumber = 10
 (currentGene = genes.to.plot$Description[geneNumber])
 
 ##########################################################################
-### Plot bar graphs
+### Plot box plots
 
 currentPlot <- ggplot(data = df.to.plot, aes(x = Condition, y = Expression, fill = Condition)) +
   geom_boxplot(varwidth = FALSE, size = 0.5) +
